@@ -1,3 +1,4 @@
 {
-    "C_Cpp.dimInactiveRegions": false
+    "C_Cpp.dimInactiveRegions": false,
+    "platformio-ide.pioHomeServerHttpHost": "0.0.0.0"
 }
