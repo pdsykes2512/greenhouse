@@ -1,5 +1,9 @@
 {
     "C_Cpp.dimInactiveRegions": false,
     "platformio-ide.pioHomeServerHttpHost": "127.0.0.1",
-    "platformio-ide.pioHomeServerHttpPort": 8008
+    "platformio-ide.pioHomeServerHttpPort": 8008,
+    "remote.SSH.defaultForwardedPorts": [
+
+    ],
+    "remote.SSH.remoteServerListenOnSocket": true
 }
