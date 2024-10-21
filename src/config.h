@@ -54,3 +54,7 @@
 
 // Watering variables
 #define WATER1_LEVEL_SENSOR A6
+
+#define OLED_ADDRESS 0x3C // initialize with the I2C addr 0x3C Typically eBay OLED's
+#define SCREEN_WIDTH 128  // OLED display width, in pixels
+#define SCREEN_HEIGHT 64  // OLED display height, in pixels

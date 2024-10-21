@@ -29,9 +29,6 @@
 #define SERIAL_DEBUG true
 
 // Setup I2C for display and SHT sensor
-#define OLED_ADDRESS 0x3C // initialize with the I2C addr 0x3C Typically eBay OLED's
-#define SCREEN_WIDTH 128  // OLED display width, in pixels
-#define SCREEN_HEIGHT 64  // OLED display height, in pixels
 #define OLED_RESET -1
 #define ONEWIRE_PIN D12
 Adafruit_SH1106G display = Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
