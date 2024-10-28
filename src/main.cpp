@@ -342,6 +342,8 @@ void readSensors(uint8_t p)
     }
     else
     { // Otherwise read sensor again for accurate value
+      pinMode(plant_config[p].soil_pin, INPUT);
+      delayOTA(100);
       plant[p].soil_moisture = readVH400(plant_config[p].soil_pin, 100, 50).VWC;
     }
   }
