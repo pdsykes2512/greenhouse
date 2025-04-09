@@ -29,7 +29,7 @@
 #define SERIAL_DEBUG true
 
 // Setup I2C for display and SHT sensor
-#define OLED_RESET -1
+constexpr int OLED_RESET = -1;
 #define ONEWIRE_PIN D12
 Adafruit_SH1106G display = Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 SHT31 sht;
@@ -44,6 +44,7 @@ float temp_high;
 float temp_low = 100;
 uint8_t timer;
 bool display_connected = false;
+enum ValveState { CLOSED, OPEN, WAIT };
 
 // Setup time
 bool init_ntp = true;
@@ -80,43 +81,14 @@ typedef struct
   float soil_moisture_wet; // Wet Soil Moisture Percentage
 } PLANT_CONFIG_t;
 
-PLANT_CONFIG_t plant_config_table[] = {
-    {PLANT1_ACTIVE, // Plant 1
-     TEMP1_SENSOR,
-     SOIL1_PIN,
-     VALVE1_RELAY,
-     PLANT1_WATER_ON,
-     PLANT1_WATER_OFF,
-     WATER1_LEVEL_SENSOR,
-     PLANT1_SOIL_DRY,
-     PLANT1_SOIL_WET},
-    {PLANT2_ACTIVE, // Plant 2
-     TEMP2_SENSOR,
-     SOIL2_PIN,
-     VALVE2_RELAY,
-     PLANT2_WATER_ON,
-     PLANT2_WATER_OFF,
-     WATER1_LEVEL_SENSOR,
-     PLANT2_SOIL_DRY,
-     PLANT2_SOIL_WET},
-    {PLANT3_ACTIVE, // Plant 3
-     TEMP3_SENSOR,
-     SOIL3_PIN,
-     VALVE3_RELAY,
-     PLANT3_WATER_ON,
-     PLANT3_WATER_OFF,
-     WATER1_LEVEL_SENSOR,
-     PLANT3_SOIL_DRY,
-     PLANT3_SOIL_WET},
-    {PLANT4_ACTIVE, // Plant 4
-     TEMP4_SENSOR,
-     SOIL4_PIN,
-     VALVE4_RELAY,
-     PLANT4_WATER_ON,
-     PLANT4_WATER_OFF,
-     WATER1_LEVEL_SENSOR,
-     PLANT4_SOIL_DRY,
-     PLANT4_SOIL_WET}};
+PLANT_CONFIG_t plant_config_table[4];
+
+void initializePlantConfig() {
+    plant_config_table[0] = {PLANT1_ACTIVE, TEMP1_SENSOR, SOIL1_PIN, VALVE1_RELAY, PLANT1_WATER_ON, PLANT1_WATER_OFF, WATER1_LEVEL_SENSOR, PLANT1_SOIL_DRY, PLANT1_SOIL_WET};
+    plant_config_table[1] = {PLANT2_ACTIVE, TEMP2_SENSOR, SOIL2_PIN, VALVE2_RELAY, PLANT2_WATER_ON, PLANT2_WATER_OFF, WATER1_LEVEL_SENSOR, PLANT2_SOIL_DRY, PLANT2_SOIL_WET};
+    plant_config_table[2] = {PLANT3_ACTIVE, TEMP3_SENSOR, SOIL3_PIN, VALVE3_RELAY, PLANT3_WATER_ON, PLANT3_WATER_OFF, WATER1_LEVEL_SENSOR, PLANT3_SOIL_DRY, PLANT3_SOIL_WET};
+    plant_config_table[3] = {PLANT4_ACTIVE, TEMP4_SENSOR, SOIL4_PIN, VALVE4_RELAY, PLANT4_WATER_ON, PLANT4_WATER_OFF, WATER1_LEVEL_SENSOR, PLANT4_SOIL_DRY, PLANT4_SOIL_WET};
+}
 
 #define NUMBER_OF_PLANTS (sizeof(plant_config_table) / sizeof(PLANT_CONFIG_t))
 
@@ -126,7 +98,7 @@ typedef struct
   bool soil_moisture_error; // Error Reading Soil Moisture Sensor
   float soil_temp;          // Current Soil Temperature
   bool soil_temp_error;     // Error Reading Soil Temperature
-  bool valve_state;         // Water valve state (OFF,ON,WAIT)
+  enum ValveState valve_state; // Water valve state (CLOSED, OPEN, WAIT)
   uint32_t valve_timer;     // Water valve timer
   bool water_level;         // Current Water Level (true,false)
   uint8_t progress_bar;     // Water Progress Bar Level
@@ -236,6 +208,10 @@ void delayOTA(int duration)
   }
 }
 
+const int ANALOG_MAX_VALUE = 4095;
+const float VOLTAGE_REFERENCE = 3.0;
+const int SENSOR_READ_DELAY = 50;
+
 struct VH400 {
   double analogValue;
   double analogValue_sd;
@@ -277,7 +253,7 @@ struct VH400 readVH400(int analogPin, int nMeasurements, int delayBetweenMeasure
   for (int i = 0; i < nMeasurements; i++) { 
     // Read value and convert to voltage 
     int sensorDN = analogRead(analogPin);
-    double sensorVoltage = sensorDN*(3.0 / 4095.0);
+    double sensorVoltage = sensorDN*(VOLTAGE_REFERENCE / ANALOG_MAX_VALUE);
         
     // Calculate VWC
     float VWC;
@@ -309,7 +285,7 @@ struct VH400 readVH400(int analogPin, int nMeasurements, int delayBetweenMeasure
     sensorVWCs[i] = VWC;
 
     // Wait for next measurement
-    delay(delayBetweenMeasurements);
+    delay(SENSOR_READ_DELAY);
   }
 
   // Calculate means
@@ -362,7 +338,7 @@ void readSensors(uint8_t p)
     { // Otherwise read sensor again for accurate value
       pinMode(plant_config[p].soil_pin, INPUT);
       delayOTA(100);
-      plant[p].soil_moisture = readVH400(plant_config[p].soil_pin, 100, 50).VWC;
+      plant[p].soil_moisture = readVH400(plant_config[p].soil_pin, 100, SENSOR_READ_DELAY).VWC;
     }
   }
   else
@@ -378,17 +354,17 @@ void waterControl()
   SerialDebug.println();
 
   // Check whether pump should be on/off
-  bool pump_state = closed;
+  bool pump_state = CLOSED;
   for (p = 0; p < NUMBER_OF_PLANTS; p++)
   {
-    if (plant[p].valve_state == open && plant_config[p].active)
+    if (plant[p].valve_state == OPEN && plant_config[p].active)
     {
-      pump_state = open;
+      pump_state = OPEN;
     }
   }
 
   // Turn pump off if not requires and update valves as per plant states
-  if (pump_state == open)
+  if (pump_state == OPEN)
   {
     for (p = 0; p < NUMBER_OF_PLANTS; p++)
     {
@@ -399,13 +375,13 @@ void waterControl()
       }
     }
     delayOTA(500);
-    digitalWrite(PUMP_RELAY, open);
+    digitalWrite(PUMP_RELAY, OPEN);
     SerialDebug.println("Pump ON");
   }
   // Otherwise update valves as per plant states and turn pump on
   else
   {
-    digitalWrite(PUMP_RELAY, closed);
+    digitalWrite(PUMP_RELAY, CLOSED);
     delayOTA(2000);
     for (p = 0; p < NUMBER_OF_PLANTS; p++)
     {
@@ -460,7 +436,7 @@ void updateDisplay()
         buf += "%";
         display.getTextBounds(buf, x, y - 7, &x1, &y1, &w, &h);
         display.setCursor(x + float(display.width() / 8) - float(w / 2), y - (h + 1));
-        if (plant[i].valve_state == open)
+        if (plant[i].valve_state == OPEN)
         {
           display.setTextColor(SH110X_BLACK);
           display.fillRect(x, y - (h + 3), display.width() / 4, h + 2, SH110X_WHITE);
@@ -559,16 +535,18 @@ void setup()
 
   // //soilTemp.begin();
   pinMode(PUMP_RELAY, OUTPUT);
-  digitalWrite(PUMP_RELAY, closed);
+  digitalWrite(PUMP_RELAY, CLOSED);
 
   uint8_t v;
   for (v = 0; v < NUMBER_OF_PLANTS; v++)
   {
     // Setup valve relay pins
     pinMode(plant_config[v].valve_relay, OUTPUT);      // Set pin for relay operation
-    digitalWrite(plant_config[v].valve_relay, closed); // Turn relay off
-    plant[v].valve_state == closed;
+    digitalWrite(plant_config[v].valve_relay, CLOSED); // Turn relay off
+    plant[v].valve_state == CLOSED;
   }
+
+  initializePlantConfig();
 }
 
 // Main program
@@ -649,9 +627,9 @@ void loop()
     // Turn relays on
     for (i = 0; i < NUMBER_OF_PLANTS; i++)
     {
-      if ((plant[i].soil_moisture < plant_config[i].soil_moisture_dry) && (plant_config[i].active) && (plant[i].valve_state == closed) && (((millis() - plant[i].valve_timer) / 1000) > plant_config[i].water_time_off))
+      if ((plant[i].soil_moisture < plant_config[i].soil_moisture_dry) && (plant_config[i].active) && (plant[i].valve_state == CLOSED) && (((millis() - plant[i].valve_timer) / 1000) > plant_config[i].water_time_off))
       {
-        plant[i].valve_state = open;
+        plant[i].valve_state = OPEN;
         plant[i].water_level = 1;
         update_water = true;
         plant[i].valve_timer = millis();
@@ -704,7 +682,7 @@ void loop()
     // Turn relays off when timer reached
     for (i = 0; i < NUMBER_OF_PLANTS; i++)
     {
-      if (plant[i].valve_state == open)
+      if (plant[i].valve_state == OPEN)
       {
         if (plant_config[i].active)
         {
@@ -712,7 +690,7 @@ void loop()
         }
         if (((millis() - plant[i].valve_timer) / 1000 > plant_config[i].water_time_on) || (plant[i].soil_moisture > plant_config[i].soil_moisture_wet))
         {
-          plant[i].valve_state = closed;
+          plant[i].valve_state = CLOSED;
           plant[i].water_level = 0;
           plant[i].valve_timer = millis();
           update_water = true;
